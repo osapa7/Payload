@@ -92,9 +92,9 @@ void loop() {
 
 double getGoalAngle(Point target, Point current) { //CHECK THIS -> why is this not in state?
   //Returns an angle from [0:360] from north to get to a target from a current point
-  double theta = atan2(target.y - current.y, target.x - current.x);
+  double theta = atan2(target.y - current.y, target.x - current.x); 
   theta = theta * 180 / 3.14;
-  double goal = 270 + theta;
+  double goal = 270 + theta; //CHECK THIS -> does this give the right convention in terms of 0 being north? Should probably take it outside and test it. Also make sure any changes dont screw up the 0-360 boundings
   if (goal > 360) {
     goal -= 360;
   }
