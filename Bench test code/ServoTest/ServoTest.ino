@@ -9,6 +9,7 @@ static PWMServo leftServo;
 static PWMServo rightServo;
 
 float delta=0;
+int goal=90;
 
 String recordDataMode = "Flight";
 
@@ -45,7 +46,7 @@ void loop() {
   imu::Vector<3> ori = STATE.stateIMU.absoluteOrientationEuler; //function from BNO55.cpp
   double yaw = ori.z(); //body frame from Inertial frame angle
 
-  delta=yaw;
+  delta=yaw-goal;
   Serial.println(yaw);
 
   //See https://github.com/Terrapin-Rocket-Team/SAC-TRT24/blob/main/Code/Payload/Orientation%20Matlab/Orientation.md for

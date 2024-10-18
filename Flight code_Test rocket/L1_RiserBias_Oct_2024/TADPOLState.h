@@ -60,7 +60,7 @@ void TADPOLState::moveServo(double delta){
   //See https://github.com/Terrapin-Rocket-Team/SAC-TRT24/blob/main/Code/Payload/Orientation%20Matlab/Orientation.md for
   //an explaination of how the values here were derivated
   double pi = 3.14;
-  double leftservo_angle_offset_from_body = 45; //CHECK THIS -> because the servo output ends up offset to the imu axes by 45, should be +-45. Which one is which idk, need to define whats front on the vehicle (what face points to north when yaw=0? Mark it)
+  double leftservo_angle_offset_from_body = 45;
   double rightservo_angle_offset_from_body = -45;
 
   double left_servo_value = 90*(cos((leftservo_angle_offset_from_body-delta)*(pi/180)) + 1); //CHECK THIS FOR ANY NEW ANGLES -> a line is running the wrong way need to add a 180- term -> we cant "rotate" the heading, we can only flip line direction
@@ -80,7 +80,7 @@ double TADPOLState::findDelta(double phi, double gamma){
   if(phi<0) phi += 360;
 
   //Find delta
-  return phi - gamma; //CHECK THIS -> Im pretty sure this is right (phi=delta+gamma), but orientation matlab says something else. Need to make sure goal and yaw have the same convention for sign direction
+  return phi - gamma;
 }
 
 
