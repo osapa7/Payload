@@ -4,7 +4,7 @@
 State STATE;
 IMU TESTIMU("BNO055"); //Input IMU type here
 
-float dc=.5;
+float dc=.7;
 float dc_actual;
 String recordDataMode = "Flight";
 int hz=20;

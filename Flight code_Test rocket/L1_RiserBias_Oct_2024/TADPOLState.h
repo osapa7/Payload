@@ -8,22 +8,11 @@
 const int numTarg = 3;
 const int numObs = 4;
 
-Line line1 = Line(Point(-75.87740556, 39.08141944), Point(-75.87596, 39.07918));
-Line line2 = Line(Point(-75.87439444, 39.079425), Point(-75.87331111, 39.08091111));
-Line line3 = Line(Point(-75.87320833, 39.07993889), Point(-75.871675, 39.07527778));
-Line line4 = Line(Point(-75.87404444, 39.08616667), Point(-75.87263056, 39.08143889));
-
-Obstacle* obstacles[] = {
-    &line1,
-    &line2,
-    &line3,
-    &line4
-};
+// Obstacle* obstacles[] = {
+// };
 
 Point targetPoints[] = {
-        Point(-75.87514167, 39.08471667),
-        Point(-75.87820833, 39.077525),
-        Point(-75.87034444, 39.08389722)
+        Point(-76.10574722, 38.99640556)
 };
 
 class TADPOLState: public State{
@@ -39,12 +28,17 @@ public:
     double left_servo_value;
     double right_servo_value; 
 
+    double goalCommand = 0;
+    double rampRate;
+
     void determineTADPOLStage();
     void servoSetup(int leftServoPin,int rightServoPin,double leftSetNeutral,double rightSetNeutral);
     void moveServo(double delta);
     double findDelta(double phi, double gamma);
     void goDirection(double direction);
     Point getTargetCoordinates();
+
+    void turnRateDriver(double goalAngle, double loopTime);
 
 private:
 
@@ -94,6 +88,10 @@ void TADPOLState::goDirection(double goal){
   double roll = ori.x();
   double pitch = ori.y();
   double yaw = ori.z(); //body frame from Inertial frame angle
+
+  if (isnan(yaw)) {
+    yaw = 200;
+  }
   double delta = findDelta(yaw, goal);
   Serial.print("Yaw: ");
   Serial.print(yaw);
@@ -132,7 +130,7 @@ void TADPOLState::determineTADPOLStage(){
       timePreviousStage = millis()/1000;
       stage = "Coasting";
   }
-  else if(stage == "Coasting" && timeAbsolute > (apogeeTime+5)){ //CHECK THIS -> should probably be a descent rate thing?
+  else if(stage == "Coasting" && timeAbsolute > (apogeeTime+10)){
       timePreviousStage = millis()/1000;
       stage = "Main";
   }
@@ -156,6 +154,8 @@ Point TADPOLState::getTargetCoordinates(){
   double y = stateGPS.latitude;
   Point current(x, y);
 
+  current = Point(-76.105696, 38.995326);
+
   // copies targets into a valids array and a safes array
   Point valids[numTarg];
   for(int i = 0; i < numTarg; i++){
@@ -168,22 +168,22 @@ Point TADPOLState::getTargetCoordinates(){
   }
 
   // loops through all targets
-  for (int i = 0; i < numTarg; i++) {
-      // checks if a target point from the valid list interacts with an obstacle
-      for (Obstacle* obs : obstacles) {
-          // if the target point intersects an obstacle, remove it from both lists
-          if (obs -> intersect(current, targetPoints[i])) {
-              valids[i] = Point();
-              safes[i] = Point();
-              break;
-          }
+  // for (int i = 0; i < numTarg; i++) {
+  //     // checks if a target point from the valid list interacts with an obstacle
+  //     for (Obstacle* obs : obstacles) {
+  //         // if the target point intersects an obstacle, remove it from both lists
+  //         if (obs -> intersect(current, targetPoints[i])) {
+  //             valids[i] = Point();
+  //             safes[i] = Point();
+  //             break;
+  //         }
 
-          // if the target point is within error of an obstacle, remove it from the "safe" list
-          if (inError(current, valids[i], *obs)) {
-              safes[i] = Point();
-          }
-      }
-  }
+  //         // if the target point is within error of an obstacle, remove it from the "safe" list
+  //         if (inError(current, valids[i], *obs)) {
+  //             safes[i] = Point();
+  //         }
+  //     }
+  // }
 
   // determines the best point to go to
   Point closestSafePoint = closest(current, safes, numTarg);
@@ -196,6 +196,31 @@ Point TADPOLState::getTargetCoordinates(){
 
   Point closestPoint = closest(current, targetPoints, numTarg);
   return closestPoint;
+}
+
+void TADPOLState::turnRateDriver(double goalAngle, double loopTime) {
+  double delta=goalAngle-goalCommand;
+  if (abs(delta) > 180) {
+      if (goalAngle < 180 ) {
+          goalCommand -= 360;
+      }
+      else {
+          goalCommand += 360;
+      }
+      delta=goalAngle-goalCommand;
+  }
+  if (abs(delta) < 1.2*rampRate*loopTime) {
+      goalCommand=goalAngle;
+  }
+  else {
+      goalCommand += rampRate*loopTime*abs(delta)/delta;
+  }
+  if (goalCommand>360){
+      goalCommand -= 360;
+  }
+  else if (goalCommand<0) {
+      goalCommand += 360;
+  }
 }
 
 #endif
