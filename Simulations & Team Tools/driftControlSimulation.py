@@ -10,7 +10,7 @@ KP = 8.96  # Proportional gain for PD controller
 KD = 16  # Derivative gain for PD controller
 VS = 5  # Vehicle speed
 DT = 0.01
-RAND = 50/DT
+RAND = 10/DT
 
 target = (0,5)
 
@@ -24,19 +24,22 @@ def generate_wind(a, b, c, d, e, f, wind_mag):
   return wind_mag, wind_angle
 
 # Function to calculate goal angle
-def calculate_goal_angle(pos, wind_mag, wind_angle, correction):
+def calculate_goal_angle(pos, heading, corrected):
   global target
 
   # distance from current to target
   dx = target[0] - pos[0][-1]
   dy = target[1] - pos[1][-1]
 
-  wind = np.array([wind_mag * math.cos(math.radians(wind_angle)), wind_mag * math.sin(math.radians(wind_angle))])
-
   return_angle = math.degrees(math.atan2(dy, dx)) % 360
 
   # wind correction logic
-  if correction == True:
+  if corrected:
+    wind = np.array([0,0])
+    if len(pos[0]) > 1:
+      wind = np.array([pos[0][-1]-pos[0][-2], pos[1][-1]-pos[1][-2]]) - VS*DT*np.array([math.cos(math.radians(heading[-1])), math.sin(math.radians(heading[-1]))])
+      wind /= DT
+    
     direction = np.array([dx, dy])
     direction_norm = np.linalg.norm(direction)
 
@@ -54,12 +57,12 @@ def calculate_goal_angle(pos, wind_mag, wind_angle, correction):
   return return_angle
 
 # Function simulates PD controller
-def system(pos, heading, past_error, wind_mag, wind_angle, correction):
+def system(pos, heading, past_error, corrected):
   # Calculate goal angle
-  goal_angle = calculate_goal_angle(pos, wind_mag, wind_angle, correction)
+  goal_angle = calculate_goal_angle(pos, heading, corrected)
 
   # Calculate error terms
-  angle_error = goal_angle - heading
+  angle_error = goal_angle - heading[-1]
   derror = (angle_error - past_error)/DT
 
   # Calculate control signal
@@ -77,7 +80,7 @@ def update_state(ang_vel, index, pwm):
   return ang_vel[index] * DT
 
 # updates the heading and position
-def move(pos, heading, total_time, ang_vel, xvel, yvel, past_error, completed, wind_mag, wind_angle, correction):
+def move(pos, heading, total_time, ang_vel, xvel, yvel, past_error, completed, wind_mag, wind_angle, corrected):
   global target
 
   # iterates through each starting point
@@ -85,7 +88,7 @@ def move(pos, heading, total_time, ang_vel, xvel, yvel, past_error, completed, w
     if i not in completed:
       total_time[i] += 1
       # Get system output
-      pwm, past_error[i] = system(pos[i], heading[i][-1], past_error[i], wind_mag, wind_angle, correction)
+      pwm, past_error[i] = system(pos[i], heading[i], past_error[i], corrected)
 
       # Update state
       heading[i].append(heading[i][-1] + update_state(ang_vel, i, pwm))
@@ -99,12 +102,11 @@ def move(pos, heading, total_time, ang_vel, xvel, yvel, past_error, completed, w
         completed.append(i)
 
 # Simulation loop
-def simulate(steps, rand_mag, offset, wind_mag_lower, wind_mag_upper, ang_lower, ang_upper):
+def simulate(pos, steps, rand_mag, offset, wind_mag_lower, wind_mag_upper, ang_lower, ang_upper):
   # Initialize state
   wind_mag = 0
 
   # not wind-corrected state
-  pos = [([-3],[1]), ([0],[0])]
   heading = [[0] for _ in pos]
   xvel = [[0] for _ in pos]
   yvel = [[0] for _ in pos]
@@ -127,14 +129,13 @@ def simulate(steps, rand_mag, offset, wind_mag_lower, wind_mag_upper, ang_lower,
   for _ in range(int(steps)):
     # Generate wind
     wind_mag, wind_angle = generate_wind(rand_mag, offset, wind_mag_lower, wind_mag_upper, ang_lower, ang_upper, wind_mag)
-
+    
     # the non-wind-corrected simulation
     move(pos, heading, total_time, ang_vel, xvel, yvel, past_error, completed, wind_mag, wind_angle, False)
 
     # wind-corrected simulation
     move(posw, headingw, total_timew, ang_velw, xvelw, yvelw, past_errorw, completedw, wind_mag, wind_angle, True)
       
-
   # displays all graphs for each starting point
   for i in range(len(pos)):
     plt.figure()
@@ -173,6 +174,9 @@ w_max = 3
 angle_min = 90
 angle_max = 180
 
-time = 10
+duration = 10
 
-simulate(time/DT, rand_mag, offset, w_min, w_max, angle_min, angle_max)
+# possible starting positions
+pos = [([-3],[-10]), ([0],[0]), ([6],[6])]
+
+simulate(pos, duration/DT, rand_mag, offset, w_min, w_max, angle_min, angle_max)
