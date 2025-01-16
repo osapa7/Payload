@@ -3,10 +3,11 @@ import matplotlib.pyplot as plt
 import math
 
 Kp = 9
-Kd = 10
+Kd = 30
 forwardSpeed = 1
 dT = 1
 simTime = 10
+goalNearness = -1 # how much of original distance from goal need to be reduced for sim to break(enter negative value to remove this clause)
 
 
 def clamp(val, max, min):
@@ -18,11 +19,11 @@ def wrapTheta(theta):
     """
     wrap theta to [-pi,pi]
     """
+    theta = theta % (2*math.pi)
     if theta > math.pi:
        theta -= 2*math.pi
     elif theta < -math.pi:
         theta += 2*math.pi
-    
     return theta
 
 def getAngularAccel(PWM):
@@ -65,12 +66,14 @@ def getThetaError(currentPos, currentTheta, goalPos):
 
 def controller(currentPos, currentTheta, goalPos, currentOmega):
     thetaError = getThetaError(currentPos, currentTheta, goalPos)
+    if abs(thetaError) < math.radians(45):
+        return 0, thetaError
     angVelError = currentOmega
 
     PWM = Kp*thetaError + Kd*angVelError #simple PD, may need to change given PWM to angular accel relationship is nonlinear
 
-    PWM = clamp(PWM, 255, -255) #restict PWM to possible output
-    return PWM
+    PWM = clamp(PWM, 100, -100) #restict PWM to possible output
+    return PWM, thetaError
 
 def testThetaError():
     """
@@ -104,6 +107,10 @@ def testThetaError():
     plt.grid(True)
     plt.show()
 
+def distanceFromGoal(posA,posB):
+    dist = math.sqrt((posA[0] - posB[0])**2 +(posA[1] - posB[1])**2)
+    return dist
+
 def simulate(startPos, goalPos, theta0, omega0, forwardSpeed, simTime, dT):
 
     # Initialize arrays
@@ -112,11 +119,15 @@ def simulate(startPos, goalPos, theta0, omega0, forwardSpeed, simTime, dT):
     omegas = np.array([omega0])  # Array for angular velocity
     alphas = np.array([0])  # Array for angular acceleration
     PWMs = np.array([0])  # Array for PWM outputs
+    thetaErrors = np.array([0])
+    distFromGoal0 = distanceFromGoal(startPos,goalPos)
+    distFromGoals = np.array([distFromGoal0])
 
     for i in range(int(simTime / dT)):  # Simulate for a fixed number of steps
         # Compute controller output
-        outputPWM = controller([positions[0, i], positions[1, i]], thetas[i], goalPos, omegas[i])
+        outputPWM, thetaError = controller([positions[0, i], positions[1, i]], thetas[i], goalPos, omegas[i])
         PWMs = np.append(PWMs, outputPWM)
+        thetaErrors = np.append(thetaErrors, thetaError)
 
         # Calculate angular acceleration
         currentAlpha = getAngularAccel(outputPWM)
@@ -134,8 +145,11 @@ def simulate(startPos, goalPos, theta0, omega0, forwardSpeed, simTime, dT):
         currentY = positions[1, i] + math.sin(currentTheta) * forwardSpeed * dT
         new_position = np.array([[currentX], [currentY]])  # New position as a column vector
         positions = np.hstack((positions, new_position))  # Append new position
-
-
+        distFromGoal = distanceFromGoal([currentX,currentY], goalPos)
+        distFromGoals = np.append(distFromGoals, distFromGoal)
+        if distFromGoal < (distFromGoal0*goalNearness): break
+    thetaErrors = np.delete(thetaErrors, 0) #remove thetaError from initalization as 0
+    
     # Plot the trajectory
     plt.figure(figsize=(6, 6))
     plt.plot(positions[0, :], positions[1, :], marker='o', label='Path')
@@ -148,4 +162,30 @@ def simulate(startPos, goalPos, theta0, omega0, forwardSpeed, simTime, dT):
     plt.legend()
     plt.show()
 
-simulate([0,0], [10,0], 0, 0, forwardSpeed, simTime, dT)
+    fig, axs = plt.subplots(3, 1, figsize=(8, 12))  # Create subplots with 3 rows and 1 column
+    axs[0].plot(np.degrees(thetaErrors), label="Theta Error", color="blue")
+    axs[0].set_title("Theta Error vs Time")
+    axs[0].set_xlabel("Time")
+    axs[0].set_ylabel("Theta Error (deg)")
+    axs[0].grid(True)
+
+    axs[1].plot(np.degrees(thetas), label="Theta", color="green")
+    axs[1].set_title("Theta vs Time")
+    axs[1].set_xlabel("Time")
+    axs[1].set_ylabel("Theta (deg)")
+    axs[1].grid(True)
+
+    axs[2].plot(PWMs, label="PWM Output", color="red")
+    axs[2].set_title("PWM Output vs Time")
+    axs[2].set_xlabel("Time")
+    axs[2].set_ylabel("PWM")
+    axs[2].grid(True)
+
+    # Adjust spacing between plots
+    plt.tight_layout()
+
+    # Show the figure
+    plt.show()
+
+
+simulate([0,0], [1,0], 0, 0, forwardSpeed, simTime, dT)
