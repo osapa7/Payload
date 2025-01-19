@@ -1,9 +1,10 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import math
+import csv
 
-Kp = 9
-Kd = 30
+Kp = 5
+Kd = 1
 forwardSpeed = 1
 dT = 1
 simTime = 10
@@ -35,13 +36,34 @@ def getAngularAccel(PWM):
     alpha(float) : angular acceleration *is this in radians/s^2?
     """
     # Constants
-    x = PWM  # PWM value
+    x = -PWM  # PWM value
     # Calculate angular acceleration based on PWM value
     if x < 0:
         alpha = 10.8 + 0.986 * x + 0.0454 * x**2 - 3.06e-05 * x**3
+    #    alpha = math.pi/4 #test line
+    elif x == 0:
+        alpha = 0
     else:
         alpha = 0.0378 - 2.33 * x - 0.0159 * x**2 - 2.77e-04 * x**3
-    return alpha
+    #    alpha = -math.pi/4 #test line
+    return alpha*0.05
+
+def plotAngularAccel():
+    # Generate PWM values from -255 to 255
+    PWM_values = np.arange(-255, 256)
+    # Compute angular acceleration for each PWM value
+    angular_accel_values = [getAngularAccel(PWM) for PWM in PWM_values]
+
+    # Plot the results
+    plt.figure(figsize=(10, 6))
+    plt.plot(PWM_values, angular_accel_values, label='Angular Acceleration')
+    plt.axhline(0, color='black', linewidth=0.8, linestyle='--', label='Zero Acceleration')
+    plt.title('Angular Acceleration vs PWM', fontsize=16)
+    plt.xlabel('PWM', fontsize=14)
+    plt.ylabel('Angular Acceleration (rad/s²)', fontsize=14)
+    plt.grid(True)
+    plt.legend(fontsize=12)
+    plt.show()
 
 def getThetaError(currentPos, currentTheta, goalPos):
     """
@@ -75,37 +97,6 @@ def controller(currentPos, currentTheta, goalPos, currentOmega):
     PWM = clamp(PWM, 100, -100) #restict PWM to possible output
     return PWM, thetaError
 
-def testThetaError():
-    """
-    test theta error caluclations over various angles
-    """
-    # Testing and plotting theta errors
-    currentPos = [1, 1]
-    goalPos = [0.5, 0.5]
-    angleRange = np.arange(-180, 181, 15)  # Angles in degrees
-    theta_errors = []
-
-    for angle in angleRange:
-        currentTheta = math.radians(angle) # Convert degrees to radians
-        thetaError = math.degrees(getThetaError(currentPos, currentTheta, goalPos))
-        theta_errors.append(thetaError)
-
-    # Convert results to a 2xn array
-    theta_data = np.array([angleRange, theta_errors])
-
-    # Print theta error with respect to angle
-    for i in range(theta_data.shape[1]):
-        print(f"Angle: {theta_data[0, i]} degrees, Theta Error: {theta_data[1, i]:.2f} radians")
-
-    # Plot theta error
-    plt.plot(theta_data[0], theta_data[1], marker="o")
-    plt.title("Theta Error vs Angle")
-    plt.xlabel("Angle (degrees)")
-    plt.ylabel("Theta Error (degrees)")
-    plt.xticks(angleRange)
-    plt.yticks(np.arange(-180,181,45))
-    plt.grid(True)
-    plt.show()
 
 def distanceFromGoal(posA,posB):
     dist = math.sqrt((posA[0] - posB[0])**2 +(posA[1] - posB[1])**2)
@@ -122,6 +113,14 @@ def simulate(startPos, goalPos, theta0, omega0, forwardSpeed, simTime, dT):
     thetaErrors = np.array([0])
     distFromGoal0 = distanceFromGoal(startPos,goalPos)
     distFromGoals = np.array([distFromGoal0])
+    print(f"Step 0:")
+    print(f"  X Position: {startPos[0]:.4f}, Y Position: {startPos[1]:.4f}")
+    print(f"  Theta: {theta0:.4f} rad ({math.degrees(theta0):.2f} deg)")
+    print(f"  Omega: {omega0:.4f} rad/s, Alpha: 0 rad/s²")
+    print(f"  Theta Error: {getThetaError(startPos, theta0, goalPos):.4f} rad ({math.degrees(getThetaError(startPos, theta0, goalPos)):.2f} deg)")
+    print(f"  PWM Output: {0:.2f}")
+    print(f"  Distance from Goal: {distFromGoal0:.4f}")
+    print("-" * 40)
 
     for i in range(int(simTime / dT)):  # Simulate for a fixed number of steps
         # Compute controller output
@@ -138,6 +137,9 @@ def simulate(startPos, goalPos, theta0, omega0, forwardSpeed, simTime, dT):
         omegas = np.append(omegas, currentOmega)
 
         currentTheta = wrapTheta(thetas[i] + currentOmega * dT)
+        # if currentAlpha != 0:
+        #     currentTheta = wrapTheta(thetas[i] + math.pi*0.25*currentAlpha/abs(currentAlpha)) #test line, removing momentum
+        # else: currentTheta = thetas[i]
         thetas = np.append(thetas, currentTheta)
 
         # Update position
@@ -148,18 +150,39 @@ def simulate(startPos, goalPos, theta0, omega0, forwardSpeed, simTime, dT):
         distFromGoal = distanceFromGoal([currentX,currentY], goalPos)
         distFromGoals = np.append(distFromGoals, distFromGoal)
         if distFromGoal < (distFromGoal0*goalNearness): break
+        print(f"Step {i + 1}:")
+        print(f"  X Position: {currentX:.4f}, Y Position: {currentY:.4f}")
+        print(f"  Theta: {currentTheta:.4f} rad ({math.degrees(currentTheta):.2f} deg)")
+        print(f"  Omega: {currentOmega:.4f} rad/s, Alpha: {currentAlpha:.4f} rad/s²")
+        print(f"  Theta Error: {thetaError:.4f} rad ({math.degrees(thetaError):.2f} deg)")
+        print(f"  PWM Output: {outputPWM:.5f}")
+        print(f"  Distance from Goal: {distFromGoal:.4f}")
+        print("-" * 40)
     thetaErrors = np.delete(thetaErrors, 0) #remove thetaError from initalization as 0
+    PWMs = np.delete(PWMs, 0) #remove thetaError from initalization as 0
     
     # Plot the trajectory
+    # Plot trajectory with arrows representing theta
     plt.figure(figsize=(6, 6))
-    plt.plot(positions[0, :], positions[1, :], marker='o', label='Path')
+    plt.plot(positions[0, :], positions[1, :], marker='o', label='Path', color="blue")
     plt.scatter(startPos[0], startPos[1], color='black', marker='x', s=100, label='Start Position')
-    plt.scatter(goalPos[0], goalPos[1], color='red', marker='x', s=100, label='Goal Position')  # Red X for goalPos
-    plt.title("Payload Position")
+    plt.scatter(goalPos[0], goalPos[1], color='red', marker='x', s=100, label='Goal Position')
+
+    # Add arrows to indicate orientation
+    arrow_scale = 0.2  # Scale for the arrow length
+    for i in range(0, positions.shape[1], max(1, int(len(thetas) / 20))):  # Reduce arrow count for clarity
+        dx = arrow_scale * math.cos(thetas[i])  # X component of arrow
+        dy = arrow_scale * math.sin(thetas[i])  # Y component of arrow
+        plt.arrow(positions[0, i], positions[1, i], dx, dy,
+                head_width=0.05, head_length=0.1, fc='green', ec='green')
+
+    # Plot settings
+    plt.title("Payload Position with Orientation")
     plt.xlabel("X Position")
     plt.ylabel("Y Position")
     plt.grid(True)
     plt.legend()
+    plt.axis('equal')  # Ensure equal scaling for x and y axes
     plt.show()
 
     fig, axs = plt.subplots(3, 1, figsize=(8, 12))  # Create subplots with 3 rows and 1 column
@@ -187,5 +210,39 @@ def simulate(startPos, goalPos, theta0, omega0, forwardSpeed, simTime, dT):
     # Show the figure
     plt.show()
 
+    import csv
 
-simulate([0,0], [1,0], 0, 0, forwardSpeed, simTime, dT)
+    # Write simulation data to a CSV file
+    # Write simulation data to a CSV file
+    csv_filename = "simulation_results.csv"
+    with open(csv_filename, mode="w", newline="") as csvfile:
+        csvwriter = csv.writer(csvfile)
+
+        # Write header
+        csvwriter.writerow([
+            "Time Step", "X Position", "Y Position", "Theta (rad)", "Theta (deg)", 
+            "Omega (rad/s)", "Alpha (rad/s²)", "Theta Error (rad)", "Theta Error (deg)", 
+            "PWM Output", "Distance from Goal"
+        ])
+
+        # Write data
+        for i in range(len(thetas)):
+            csvwriter.writerow([
+                i * dT,                   # Time step
+                positions[0, i],          # X position
+                positions[1, i],          # Y position
+                thetas[i],                # Theta in radians
+                math.degrees(thetas[i]),  # Theta in degrees
+                omegas[i],                # Angular velocity
+                alphas[i],                # Angular acceleration
+                thetaErrors[i] if i < len(thetaErrors) else 0,  # Theta error in radians
+                math.degrees(thetaErrors[i]) if i < len(thetaErrors) else 0,  # Theta error in degrees
+                PWMs[i] if i < len(PWMs) else 0,                  # PWM output
+                distFromGoals[i]          # Distance from goal
+            ])
+
+    print(f"Simulation results written to {csv_filename}")
+
+
+
+simulate([0,0], [5,5], 0, 0, forwardSpeed, simTime, dT)
